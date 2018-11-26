@@ -1,0 +1,32 @@
+stages:
+  - scan
+  - deploy
+code_analysis:
+  stage: scan
+  image: newtmitch/sonar-scanner
+  before_script:
+  - git submodule update --init --recursive
+  script:
+    - rm -r ../vcsa
+    - git clone https://github.com/karfianto/Vulny-Code-Static-Analysis ../vcsa
+    - python ../vcsa/index.py --dir ./
+    - sonar-scanner -Dsonar.projectName=$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME -Dsonar.projectKey=$SQ_PROJECT_KEY -Dsonar.projectBaseDir=. -Dsonar.sources=. -Dsonar.host.url=$SQ_URL -Dsonar.login=$SQ_USERNAME -Dsonar.password=$SQ_PASSWORD -Dsonar.gitlab.commit_sha=$CI_COMMIT_SHA -Dsonar.gitlab.project_id=$CI_PROJECT_ID -Dsonar.gitlab.ref_name=$CI_COMMIT_REF_NAME
+  only:
+    - master
+deploy_to_dev:
+  stage: deploy
+  image: tetraweb/php
+  before_script:
+    - mkdir /root/.ssh && chmod 700 /root/.ssh
+    - ssh-keyscan -H -p 22 $DEV_IP_ADDRESS >> /root/.ssh/known_hosts
+    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - echo "$DEV_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+    - '[[ -f /.dockerenv ]] && echo -e "Host *ntStrictHostKeyChecking nonn" >
+    ~/.ssh/config'
+    - apt-get install rsync
+    - git submodule update --init --recursive
+  script:
+    - rsync -rav -e ssh --exclude=.git --exclude=db.sql --exclude=.gitlab-ci.yml ./ root@$DEV_IP_ADDRESS:/var/www/dev.demo.go.id/demo-idsecconf
+  only:
+    - master
